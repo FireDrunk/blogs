@@ -1,7 +1,7 @@
 # Rancher Kubernetes HA Cluster setup
 
-A few weeks back we got an *awesome* demo from the Chris (CEO) from StorageOS (https://storageos.com).
-To try the software, I wanted to build a full HA Kubernetes cluster to test out the software.
+A few weeks back we got an *awesome* demo from Chris (CEO) from [StorageOS](https://storageos.com).
+To try their product, I wanted to build a full HA Kubernetes cluster to leverage the software.
 This is the story about my endouvers to get a fully HA Rancher Cluster up and running.
 
 # Environment
@@ -17,12 +17,19 @@ For this setup to work, one would need:
 - An external Load Balancer pointing towards the nodes.
 - Extra devices on the nodes for extra storage.
 
+# Intro
+Essentially the setup consists of four major steps.
+1 - Install a Load Balancer for your Cluster
+2 - Launch the Rancher installer as a Docker container on one of your cluster nodes
+3 - Build a cluster
+4 - Run the Rancher installation on our cluster replacing the container you manually started, to make sure Rancher itself is properly managed by Kubernetes.
+
 # Step 1 - Installation of the Hosts
 As I'm using baremetal machines, there is no automatic installation of the base operating system. Of course you could do something with PXE boot, or something fancy with automated provisioning, but that's not the story here.
 
 I'm going to use Ansible to manage these machines, so a bare install is the only requirement, the rest will be done with Ansible.
 
-I've manually installed all three machines with a minimal Ubuntu netinstall and setup an SSH account. I've generated a keypair for Ansible to connect to the machines, created accounts on the machines, and setup key authentication for these accounts. If you don't know how to do this, there are *tons* of guides on the internet ;)
+I've manually installed all three machines with a minimal Ubuntu netinstall and setup a personal account. I've generated a keypair for Ansible to connect to the machines, created accounts for Ansible on the machines, and setup key authentication for these accounts. If you don't know how to do this, there are *tons* of guides on the internet ;)
 
 The basic (directory) setup:
 
@@ -109,7 +116,7 @@ If you skip this step, you will have 1 node which acts as the main DNS for your 
 For my cluster I'm using pfSense. This is a FreeBSD based router distribution which is perfectly capable of the task!
 It has builtin support for `haproxy` which is a really easy to configure loadbalancer package.
 
-To install `haproxy` go to: `System` -> `Package Manger` -> `Available Packages`, Select `haproxy` and click `Install`.
+To install `haproxy` go to: `System` -> `Package Manager` -> `Available Packages`, Select `haproxy` and click `Install`.
 
 Once installed go to: `Firewall` -> `Virtual IP's` and click `Add`. Select the proper `Interface` and set the IP Address you want to use for your loadbalancer.
 
@@ -127,7 +134,7 @@ Name:   k8s.cravu.lan
 Address: 192.168.1.50
 ```
 
-You can test it by pinging it, pfSense will respond by default:
+You can test it using ping, pfSense will respond by default:
 
 ```bash
 root@nas:/home/thijs/nuc-cluster# ping -c 4 k8s.cravu.lan
@@ -157,7 +164,7 @@ At the `Health checking` section, set the `Health check method` to `Basic`. This
 Click `Save` at the bottom to save the `Backend`.
 
 Now we need to configure a *Frontend* to listen to port 443 on the Virtual IP.
-Click `Add` to create a Frontend. This is 'opens' a port on your Virtual IP to start loadbalancing.
+Click `Add` to create a Frontend. This is opens a port on your Virtual IP to start loadbalancing.
 
 In the `Name` field, enter something meaningful. In the `External address`, under the `Listen address` dropdown, select the Virtual IP you created earlier. In the `Port` field, enter `443`.
 Because we need Rancher to handle the HTTPS part, set the `Type` to `TCP`. You could let pfSense handle the HTTPS traffic, but that's a bit harder to setup.
@@ -191,7 +198,7 @@ But to be fair, my cluster is already working, so the nginx container is already
 
 To install Rancher we could use RKE, but RKE lacks support for passwordless sudo (which Ansible supports flawlessly...). So instead, I'll be using the graphical installer.
 
-To start the Rancher installer, login to one of your nodes, and run `docker run -d --restart=unless-stopped -p 443:443 rancher/rancher`. This will launch the Rancher installer on your first node.
+To start the Rancher installer, login to one of your nodes, and run `docker run -d --restart=unless-stopped -p 443:443 rancher/rancher:v2.2.4`. This will launch the Rancher installer on your first node. (This is the stable version at the time this blog was written, feel free to pick a higher version at your own risk :-) )
 
 It takes some time for the Rancher server to start, and for the loadbalancer (if you have one) to pick it up. Expect something like 10-15 seconds.
 
@@ -235,7 +242,7 @@ nuc1    Ready    controlplane,etcd,worker   3d4h   v1.13.5
 nuc2    Ready    controlplane,etcd,worker   3d4h   v1.13.5
 ```
 
-If you see all nodes, they are all ready and all the roles are configured correctly, you are ready to proceed!
+If you see all nodes, they are in the 'Ready' status and all the roles are configured correctly, you are ready to proceed!
 
 Initialize Helm with the commands:
 ```bash
@@ -248,7 +255,7 @@ kubectl create clusterrolebinding tiller \
 helm init --service-account tiller
 ```
 
-This will setup helm on your (rancher) cluster, and gives you access to a whole catalog of automated Kubernetes deployments!
+This will setup helm on your cluster, and gives you access to a whole catalog of automated Kubernetes deployments!
 
 To verify Helm is correctly installed you can use:
 ```bash
@@ -309,7 +316,7 @@ rancher-6fd48d6f59-585gp               1/1     Running   4          2d5h
 rancher-6fd48d6f59-xccjq               1/1     Running   6          3d3h
 ```
 
-If all pods are properly running, you can refresh your browser. You will be prompted again to enter a password for the rancher server. After the initial screens you will be pointed to the Cluster overview.
+If all pods are properly running, you can refresh your browser. You will be prompted again to enter a password for the Rancher server. After the initial screens you will be pointed to the Cluster overview.
 But instead of an empty list, it should have improted your existing cluster! Cool huh?
 
 Rancher sees it's running on Kubernetes this time, and will automatically import your cluster and make it available to you!
